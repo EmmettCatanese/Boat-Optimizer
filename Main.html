@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sailing Club Boat Board</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles can go here if needed, though Tailwind should handle most */
+        body {
+            font-family: "Inter", sans-serif;
+        }
+        .boat-slot {
+            min-height: 50px; /* Minimum height for a time slot */
+            border-bottom: 1px solid #e5e7eb; /* Light gray border */
+        }
+        /* Style for the time input to show 15-minute intervals */
+        input[type="time"]::-webkit-calendar-picker-indicator {
+            display: none; /* Hide default picker icon */
+        }
+         input[type="time"]::-webkit-inner-spin-button,
+        input[type="time"]::-webkit-outer-spin-button {
+            -webkit-appearance: none; /* Hide spin buttons */
+            margin: 0;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-6">
+    <div class="container mx-auto bg-white rounded-lg shadow-lg p-6">
+        <h1 class="text-2xl font-bold mb-6 text-center">HRCS Boat Board Optimizer</h1>
+
+        <div class="mb-8">
+            <h2 class="text-xl font-semibold mb-4">Input Sails</h2>
+
+            <div class="mb-4 p-4 border rounded-md bg-gray-50">
+                <h3 class="text-lg font-medium mb-2">Add Sails</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="sail-skipper" class="block text-sm font-medium text-gray-700">Skipper/Group Name</label>
+                        <input type="text" id="sail-skipper" placeholder="Skipper or Group Name" class="mt-1 p-2 border rounded-md w-full">
+                    </div>
+                     <div>
+                        <label for="sail-start-time" class="block text-sm font-medium text-gray-700">Start Time</label>
+                        <input type="time" id="sail-start-time" step="900" class="mt-1 p-2 border rounded-md w-full">
+                    </div>
+                    <div>
+                        <label for="sail-end-time" class="block text-sm font-medium text-gray-700">End Time</label>
+                         <input type="time" id="sail-end-time" step="900" class="mt-1 p-2 border rounded-md w-full">
+                    </div>
+                     <div>
+                        <label for="sail-boat-type-pref" class="block text-sm font-medium text-gray-700">Preferred Boat Type (Optional)</label>
+                        <select id="sail-boat-type-pref" class="mt-1 p-2 border rounded-md w-full">
+                            <option value="">Any Type</option>
+                            <option value="J24">J24</option>
+                            <option value="J80">J80</option>
+                            </select>
+                    </div>
+                     <div>
+                        <label for="num-sails" class="block text-sm font-medium text-gray-700">Number of Sails in Group</label>
+                        <input type="number" id="num-sails" value="1" min="1" class="mt-1 p-2 border rounded-md w-full">
+                    </div>
+                </div>
+                 <button id="add-sail-btn" class="mt-4 bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 w-full">Add Sail(s)</button>
+                <div id="sail-list" class="mt-4">
+                    <h3 class="text-lg font-medium mb-2">Pending Sails</h3>
+                    </div>
+            </div>
+        </div>
+
+        <div class="text-center mb-8">
+            <button id="optimize-btn" class="bg-green-500 text-white text-xl font-bold p-3 rounded-md hover:bg-green-600">Optimize Boat Board</button>
+        </div>
+
+        <div id="boat-board" class="overflow-x-auto">
+            <h2 class="text-xl font-semibold mb-4 text-center">Optimized Boat Board</h2>
+            <div id="board-container" class="flex flex-col">
+                <div id="time-labels" class="flex flex-row border-b border-gray-300">
+                     <div class="w-20 p-2 font-semibold">Time</div> </div>
+                <div id="board-content" class="flex flex-row">
+                     <div class="w-20 border-r border-gray-300">
+                         </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // JavaScript will go here
+        const addSailBtn = document.getElementById('add-sail-btn');
+        const sailSkipperInput = document.getElementById('sail-skipper');
+        const sailStartTimeInput = document.getElementById('sail-start-time');
+        const sailEndTimeInput = document.getElementById('sail-end-time');
+        const sailBoatTypePrefSelect = document.getElementById('sail-boat-type-pref');
+        const numSailsInput = document.getElementById('num-sails');
+        const sailListDiv = document.getElementById('sail-list');
+
+        const optimizeBtn = document.getElementById('optimize-btn');
+        const boardContainer = document.getElementById('board-container');
+        const timeLabelsDiv = document.getElementById('time-labels');
+        const boardContentDiv = document.getElementById('board-content');
+
+
+        // Hardcoded boats with priority ranking (lower number = higher priority)
+        // The order here defines the display order on the board.
+        let boats = [
+            { name: 'J80-1', type: 'J80', priority: 6 },
+            { name: 'J80-2', type: 'J80', priority: 3 },
+            { name: 'J80-15', type: 'J80', priority: 1 },
+            { name: 'J80-4', type: 'J80', priority: 2 },
+            { name: 'J80-5', type: 'J80', priority: 5 },
+            { name: 'J80-6', type: 'J80', priority: 4 },
+            { name: 'J24-2', type: 'J24', priority: 2 }, // J24 priorities start from 1 again within their type
+            { name: 'J24-1', type: 'J24', priority: 3 },
+            { name: 'J24-5', type: 'J24', priority: 1 },
+            { name: 'J24-8', type: 'J24', priority: 4 },
+            { name: 'J80-7', type: 'J80', priority: 8 },
+            { name: 'J80-14', type: 'J80', priority: 11 },
+            { name: 'J80-9', type: 'J80', priority: 7 },
+            { name: 'J80-10', type: 'J80', priority: 9 },
+            { name: 'J80-11', type: 'J80', priority: 10 },
+        ];
+
+        let sails = [];
+
+        // Function to render the list of added sails
+        function renderSails() {
+             sailListDiv.innerHTML = '<h3 class="text-lg font-medium mb-2">Pending Sails</h3>'; // Clear and add header
+            if (sails.length === 0) {
+                sailListDiv.innerHTML += '<p class="text-gray-600">No sails added yet.</p>';
+                return;
+            }
+
+            // Group sails by their details for display
+            const groupedSails = sails.reduce((acc, sail) => {
+                const key = `${sail.skipper}-${sail.startTime}-${sail.endTime}-${sail.boatTypePref}`;
+                if (!acc[key]) {
+                    acc[key] = { ...sail, count: 0, indices: [] };
+                }
+                acc[key].count++;
+                 sails.forEach((s, index) => {
+                     if (s.skipper === sail.skipper && s.startTime === sail.startTime && s.endTime === sail.endTime && s.boatTypePref === sail.boatTypePref && !acc[key].indices.includes(index)) {
+                         acc[key].indices.push(index);
+                     }
+                 });
+                return acc;
+            }, {});
+
+
+            Object.values(groupedSails).forEach((group) => {
+                const sailElement = document.createElement('div');
+                sailElement.classList.add('flex', 'justify-between', 'items-center', 'bg-gray-100', 'p-2', 'rounded-md', 'mb-2');
+                sailElement.innerHTML = `
+                    <span>
+                        ${group.skipper} - ${group.startTime} to ${group.endTime} (${group.boatTypePref || 'Any Type'})
+                        ${group.count > 1 ? `(x${group.count})` : ''}
+                    </span>
+                    <button class="remove-sail-group-btn text-red-500 hover:text-red-700 text-sm" data-indices="${group.indices.join(',')}">Remove Group</button>
+                `;
+                sailListDiv.appendChild(sailElement);
+            });
+
+
+            document.querySelectorAll('.remove-sail-group-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const indicesToRemove = e.target.dataset.indices.split(',').map(Number);
+                    indicesToRemove.sort((a, b) => b - a).forEach(index => {
+                        sails.splice(index, 1);
+                    });
+                    renderSails();
+                });
+            });
+        }
+
+
+        addSailBtn.addEventListener('click', () => {
+            const skipper = sailSkipperInput.value.trim();
+            const startTime = sailStartTimeInput.value;
+            const endTime = sailEndTimeInput.value;
+            const boatTypePref = sailBoatTypePrefSelect.value;
+            const numSails = parseInt(numSailsInput.value, 10);
+
+            if (skipper && startTime && endTime && numSails > 0) {
+                for (let i = 0; i < numSails; i++) {
+                    sails.push({ skipper, date: '2000-01-01', startTime, endTime, boatTypePref });
+                }
+                sailSkipperInput.value = '';
+                sailStartTimeInput.value = '';
+                sailEndTimeInput.value = '';
+                sailBoatTypePrefSelect.value = '';
+                numSailsInput.value = '1';
+                renderSails();
+            } else {
+                alert('Please fill in all required sail details and specify a valid number of sails.');
+            }
+        });
+
+        function parseTime(date, time) {
+             const fixedDate = '2000-01-01';
+             const [hours, minutes] = time.split(':').map(Number);
+             const d = new Date(fixedDate);
+             d.setHours(hours, minutes, 0, 0);
+             return d;
+        }
+
+        function formatTime(timeString) {
+            const [hours, minutes] = timeString.split(':').map(Number);
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            const formattedHours = hours % 12 || 12;
+            const formattedMinutes = minutes < 10 ? '0' + minutes : minutes;
+            return `${formattedHours}:${formattedMinutes} ${ampm}`;
+        }
+
+
+        // Optimization Logic (Includes boat prioritization and favoring busier boats)
+        optimizeBtn.addEventListener('click', () => {
+            console.log("Optimize button clicked.");
+            console.log("Current boats:", boats);
+            console.log("Current sails:", sails);
+
+            if (boats.length === 0) {
+                alert('No boats available to schedule.');
+                console.warn("Optimization stopped: No boats available.");
+                return;
+            }
+            if (sails.length === 0) {
+                 alert('Please add some sails first.');
+                 console.warn("Optimization stopped: No sails available.");
+                 return;
+            }
+
+            // Sort sails by start time, then by duration (descending)
+            const sortedSails = [...sails].sort((a, b) => {
+                const startTimeA = parseTime('2000-01-01', a.startTime);
+                const startTimeB = parseTime('2000-01-01', b.startTime);
+                if (startTimeA - startTimeB !== 0) {
+                    return startTimeA - startTimeB; // Sort by start time first
+                }
+                // If start times are the same, sort by duration (longer first)
+                const durationA = parseTime('2000-01-01', a.endTime) - startTimeA;
+                const durationB = parseTime('2000-01-01', b.endTime) - startTimeB;
+                return durationB - durationA;
+            });
+            console.log("Sails sorted by time and duration:", sortedSails);
+
+
+            // Create boat schedules based on the original boat order for display
+            const boatSchedulesForDisplay = boats.map(boat => ({
+                ...boat,
+                schedule: []
+            }));
+            console.log("Initial boat schedules for display:", boatSchedulesForDisplay);
+
+
+            // Create a separate list of boats sorted by priority for scheduling
+            const boatsSortedByPriority = [...boats].sort((a, b) => {
+                 if (a.type !== b.type) {
+                     return a.type.localeCompare(b.type);
+                 }
+                 return a.priority - b.priority;
+            });
+            console.log("Boats sorted by priority for scheduling:", boatsSortedByPriority);
+
+
+            // Assign sails to boats based on priority and availability
+            sortedSails.forEach((sail, sailIndex) => {
+                console.log(`Attempting to schedule sail ${sailIndex + 1}:`, sail);
+                let assigned = false;
+
+                // Iterate through boats in priority order
+                for (const boatForScheduling of boatsSortedByPriority) {
+                    const boatScheduleForDisplay = boatSchedulesForDisplay.find(b => b.name === boatForScheduling.name);
+
+                    if (sail.boatTypePref && boatForScheduling.type !== sail.boatTypePref) {
+                        console.log(`Skipping boat ${boatForScheduling.name} due to type preference.`);
+                        continue;
+                    }
+
+                    let isFree = true;
+                    const newSailStartTime = parseTime('2000-01-01', sail.startTime);
+                    const newSailEndTime = parseTime('2000-01-01', sail.endTime);
+
+                    for (const scheduledSail of boatScheduleForDisplay.schedule) {
+                        const scheduledStartTime = parseTime('2000-01-01', scheduledSail.startTime);
+                        const scheduledEndTime = parseTime('2000-01-01', scheduledSail.endTime);
+
+                        if (
+                            (newSailStartTime < scheduledEndTime && newSailEndTime > scheduledStartTime)
+                        ) {
+                            isFree = false;
+                            console.log(`Boat ${boatForScheduling.name} is not free during this time.`);
+                            break;
+                        }
+                    }
+
+                    if (isFree) {
+                        boatScheduleForDisplay.schedule.push(sail);
+                        assigned = true;
+                        console.log(`Sail assigned to boat: ${boatForScheduling.name}`);
+                        break; // Sail assigned, move to the next sail
+                    }
+                }
+
+                if (!assigned) {
+                     console.warn(`Sail for ${sail.skipper} could not be assigned to any available boat.`);
+                }
+            });
+            console.log("Finished assigning sails.");
+
+
+            renderBoatBoard(boatSchedulesForDisplay);
+            console.log("RenderBoatBoard function called.");
+        });
+
+        function renderBoatBoard(boatSchedules) {
+            console.log("Rendering boat board with schedules:", boatSchedules);
+            timeLabelsDiv.innerHTML = '<div class="w-20 p-2 font-semibold border-r border-gray-300">Time</div>';
+            boardContentDiv.innerHTML = '<div class="w-20 border-r border-gray-300" id="time-slots-column"></div>';
+
+            const timeSlotsColumn = document.getElementById('time-slots-column');
+            console.log("Time slots column created:", timeSlotsColumn);
+
+
+            const startHour = 8;
+            const endHour = 20;
+            const pixelsPerHour = 50;
+
+            for (let i = startHour; i <= endHour; i++) {
+                 const hour = i;
+                 const timeString = `${hour < 10 ? '0' + hour : hour}:00`;
+
+                 const timeLabel = document.createElement('div');
+                 timeLabel.classList.add('h-[50px]', 'p-2', 'border-b', 'border-gray-300', 'flex', 'items-center', 'justify-center', 'text-xs');
+                 timeLabel.textContent = formatTime(timeString);
+                 timeSlotsColumn.appendChild(timeLabel);
+            }
+            console.log("Time labels added.");
+
+
+            boatSchedules.forEach((boat, index) => {
+                console.log(`Processing boat ${index + 1}:`, boat.name);
+                const boatColumn = document.createElement('div');
+                boatColumn.classList.add('flex-1', 'border-r', 'border-gray-300', 'relative');
+
+                const boatHeader = document.createElement('div');
+                boatHeader.classList.add('w-full', 'p-2', 'font-semibold', 'text-center', 'border-b', 'border-gray-300');
+                boatHeader.textContent = `${boat.name} (${boat.type})`;
+                timeLabelsDiv.appendChild(boatHeader);
+                console.log("Boat header added for:", boat.name);
+
+                 for (let i = startHour; i <= endHour; i++) {
+                    const boatSlot = document.createElement('div');
+                    boatSlot.classList.add('boat-slot', 'w-full');
+                     if (i < endHour) {
+                         boatSlot.classList.add('border-b');
+                     }
+                    boatColumn.appendChild(boatSlot);
+                 }
+                 console.log("Time slots added for boat column:", boat.name);
+
+
+                boat.schedule.forEach(sail => {
+                    const sailElement = document.createElement('div');
+                    sailElement.classList.add('absolute', 'left-0', 'right-0', 'bg-blue-200', 'border', 'border-blue-500', 'rounded-md', 'p-1', 'text-xs', 'overflow-hidden', 'text-blue-900');
+
+                    const start = parseTime('2000-01-01', sail.startTime);
+                    const end = parseTime('2000-01-01', sail.endTime);
+                    const boardStartTime = parseTime('2000-01-01', `${startHour}:00`);
+
+                    const startMinutesFromBoardStart = (start - boardStartTime) / (1000 * 60);
+                    const durationMinutes = (end - start) / (1000 * 60);
+
+                    const topPosition = (startMinutesFromBoardStart / 60) * pixelsPerHour;
+                    const height = (durationMinutes / 60) * pixelsPerHour;
+
+                    sailElement.style.top = `${topPosition}px`;
+                    sailElement.style.height = `${height}px`;
+
+                    sailElement.innerHTML = `
+                        <div class="font-semibold">${sail.skipper}</div>
+                        <div>${formatTime(sail.startTime)} - ${formatTime(sail.endTime)}</div>
+                    `;
+
+                    boatColumn.appendChild(sailElement);
+                });
+                console.log(`Scheduled ${boat.schedule.length} sails for boat:`, boat.name);
+
+
+                boardContentDiv.appendChild(boatColumn);
+                console.log("Boat column appended to boardContentDiv:", boat.name);
+            });
+             console.log("Finished rendering boat board.");
+        }
+
+        renderSails();
+        renderBoatBoard(boats.map(boat => ({ ...boat, schedule: [] })));
+
+
+    </script>
+</body>
+</html>
